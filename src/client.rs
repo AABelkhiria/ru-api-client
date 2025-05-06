@@ -19,7 +19,10 @@ impl ApiClient {
 
         let base_url = Url::parse(base_url).map_err(ApiClientError::UrlParseError)?;
 
-        Ok(ApiClient { base_url, http_client })
+        Ok(ApiClient {
+            base_url,
+            http_client,
+        })
     }
 
     pub fn get(&self, endpoint: &str) -> Result<RequestBuilder, ApiClientError> {
@@ -28,10 +31,16 @@ impl ApiClient {
     }
 
     pub fn build_url(&self, endpoint: &str) -> Result<Url, ApiClientError> {
-        self.base_url.join(endpoint).map_err(ApiClientError::UrlParseError)
+        self.base_url
+            .join(endpoint)
+            .map_err(ApiClientError::UrlParseError)
     }
 
-    pub fn add_query_params(&self, builder: RequestBuilder, params: Option<&HashMap<&str, String>>) -> RequestBuilder {
+    pub fn add_query_params(
+        &self,
+        builder: RequestBuilder,
+        params: Option<&HashMap<&str, String>>,
+    ) -> RequestBuilder {
         if let Some(query_params) = params {
             builder.query(query_params)
         } else {
@@ -39,7 +48,11 @@ impl ApiClient {
         }
     }
 
-    pub fn add_headers(&self, builder: RequestBuilder, headers: Option<&HeaderMap>) -> RequestBuilder {
+    pub fn add_headers(
+        &self,
+        builder: RequestBuilder,
+        headers: Option<&HeaderMap>,
+    ) -> RequestBuilder {
         if let Some(custom_headers) = headers {
             builder.headers(custom_headers.clone())
         } else {
@@ -63,33 +76,41 @@ impl ApiClient {
                 return Err(ApiClientError::RequestBuildOrSendFailed(e));
             }
         };
-        
-        self.handle_json_response(response).await
+
+        let error_status: reqwest::StatusCode = response.status();
+
+        // handle status codes and deserialization
+        if error_status.is_success() {
+            return self.handle_json_response::<T>(response).await;
+        } else if error_status.is_redirection() {
+            // return a non supported error for redirection
+            return Err(ApiClientError::Unexpected(format!(
+                "Redirection error: {}",
+                error_status
+            )));
+        } else {
+            // return a generic error for other status codes
+            let error_body = response
+                .text()
+                .await
+                .unwrap_or_else(|_| "Could not read error body".to_string());
+            return Err(ApiClientError::ApiError {
+                status: error_status,
+                body: error_body,
+            });
+        }
     }
 
     async fn handle_json_response<T: serde::de::DeserializeOwned>(
         &self,
         response: Response,
     ) -> Result<T, ApiClientError> {
-        let status = response.status();
-        if status.is_success() {
-            let result = response
-                .json::<T>()
-                .await
-                .map_err(|err| ApiClientError::DeserializationError {
-                    source: err,
-                    body: "Could not capture body on deserialization error easily here. Check logs.".to_string(),
-                })?;
-            Ok(result)
-        } else {
-            let error_body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "Could not read error body".to_string());
-            Err(ApiClientError::ApiError {
-                status,
-                body: error_body,
-            })
+        match response.json::<T>().await {
+            Ok(result) => Ok(result),
+            Err(err) => Err(ApiClientError::DeserializationError {
+                source: err,
+                body: String::from("Could not deserialize response"),
+            }),
         }
     }
 }
