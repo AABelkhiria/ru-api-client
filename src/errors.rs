@@ -34,3 +34,14 @@ pub enum ApiClientError {
     #[error("Client Internal Error: {0}")]
     InternalError(String),
 }
+
+// Helper to create HttpError with URL
+impl ApiClientError {
+    pub fn http_error(status: StatusCode, body: String, url: Option<reqwest::Url>) -> Self {
+        ApiClientError::HttpError {
+            status,
+            body,
+            url: url.map(|u| u.to_string()),
+        }
+    }
+}
