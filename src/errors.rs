@@ -32,7 +32,7 @@ pub enum ApiClientError {
     },
 
     #[error("Client Internal Error: {0}")]
-    InternalError(String),
+    InternalError(String), // For unexpected issues within the client library
 }
 
 // Helper to create HttpError with URL
