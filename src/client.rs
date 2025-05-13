@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::time::Duration;
 use url::Url;
 
+#[derive(Clone)]
 pub struct ApiClient {
     base_url: Url,
     http_client: reqwest::Client,
